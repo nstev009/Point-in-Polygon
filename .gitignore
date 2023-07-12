@@ -1,0 +1,12 @@
+# Ignore specific subfolders
+
+
+# Ignore specific file extensions
+*.git
+*.spyproject
+*.ipynb_checkpoints
+*.ipynb
+*.csv
+*.sas7bdat
+*.parquet
+
