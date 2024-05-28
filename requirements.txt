@@ -5,7 +5,9 @@ click==8.1.7
 click-plugins==1.1.1
 cligj==0.7.2
 colorama==0.4.6
+cx-Oracle==8.3.0
 fiona==1.9.6
+GeoAlchemy2==0.15.1
 geopandas==0.14.4
 greenlet==3.0.3
 importlib_metadata==7.1.0
