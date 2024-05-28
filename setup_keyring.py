@@ -1,7 +1,7 @@
 import keyring as kr
 
 
-def main():
+def setup_keyring():
     # Get inputs from the user
     hostname = input("Enter the hostname: ").strip()
     username = input("Enter the username: ").strip()
@@ -24,4 +24,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    setup_keyring()
