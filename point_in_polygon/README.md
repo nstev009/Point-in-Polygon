@@ -1,183 +1,29 @@
-# Point in Polygon
+# point_in_polygon
 
-A Python package for efficient point-in-polygon operations using GeoPandas and Oracle Spatial database. This package is designed to replace ArcGIS for point-in-polygon operations, offering better performance and more flexibility.
+## Description
 
-## Features
+Open source point in polygon analysis using geodata warehouse
 
-- Fast point-in-polygon operations using GeoPandas
-- Oracle Spatial database integration
-- Chunked processing for large datasets
-- Parallel processing support
-- Caching mechanism for database queries
-- Configurable CSV input/output
-- Secure credential management using keyring
+Analysis works but it is still somewhat slow. Querying of the geodata warehouse is slow.
 
 ## Installation
 
-```bash
-pip install point_in_polygon
-```
+Requires oracle driver. Please email the geo help desk for installation and help.
+Use the `create_environment.py` and the `requirement.txt` file to create a new environment with all the packages installed.
 
-## Quick Start
+## Usage
 
-### 1. Setting Up Database Credentials
+Uses keyring. Please set your domain, username, and password prior to using the script.
 
-Before using the package, you need to set up your database credentials using keyring. This is a one-time setup that securely stores your credentials:
+The `set_keyring.py` script can be run up your keyring authentication. Please ensure the name of the domain is the same as the one use in your code.
 
-```python
-from point_in_polygon import setup_keyring
+Test data for the program can be found at: \\fld6filer\Record_Linkage\Team\wan\Other\PiP_data
 
-# Set up credentials for default hostname (Geodepot)
-setup_keyring()
+## Roadmap
 
-# Or specify a different hostname
-setup_keyring(hostname="CustomHost")
-```
+Optimizing query to geodata warehouse.
+Caching geodata and check if update of table has occured.
 
-The setup will:
-1. Prompt for your username
-2. Securely prompt for your password (input will be hidden)
-3. Store credentials in your system's secure keyring
-4. Verify the credentials were stored correctly
+## Project status
 
-Example terminal interaction:
-```
-Setting up credentials for Geodepot
-Enter your username: your_username
-Enter your password: ********
-Success: Credentials stored securely for your_username@Geodepot
-```
-
-### 2. Basic Usage
-
-Here's a simple example of how to use the point-in-polygon functionality:
-
-```python
-from point_in_polygon import PointInPolygonConfig, point_in_polygon
-
-# Create configuration
-config = PointInPolygonConfig(
-    # Required parameters
-    csv_long_lat_file="input_points.csv",  # CSV with rec_id, latitude, longitude columns
-    output_csv_file="output_results.csv",   # Where to save the results
-    table_name="WC2021NGD_A_202106",       # Oracle table name
-    
-    # Optional: Override defaults if needed
-    hostname="Geodepot",                    # Default database hostname
-    database_name="WAREHOUSE",              # Default database name
-)
-
-# Run the point-in-polygon operation
-point_in_polygon(config)
-```
-
-### 3. Advanced Configuration
-
-Here's a more detailed example showing all configuration options:
-
-```python
-from point_in_polygon import PointInPolygonConfig, point_in_polygon
-
-config = PointInPolygonConfig(
-    # Required input/output files
-    csv_long_lat_file="input_points.csv",
-    output_csv_file="output_results.csv",
-    
-    # Required database table information
-    table_name="WC2021NGD_A_202106",
-    
-    # Database connection settings (defaults shown)
-    hostname="Geodepot",
-    database_name="WAREHOUSE",
-    
-    # Database column and spatial settings
-    uid="BB_UID",                  # UID column name for geodepot database
-    shape_column="SHAPE",          # Shape column name for geodepot database
-    spatial_reference=3347,        # Spatial reference system code for geodepot database
-    conditions="WHERE ...",        # Optional SQL conditions
-    
-    # CSV column mapping
-    id_column="rec_id",           # Name of the ID column in your CSV
-    lat_column="latitude",        # Name of the latitude column in your CSV
-    lon_column="longitude",       # Name of the longitude column in your CSV
-    
-    # Processing options
-    chunk_size=100000,           # Process this many rows at once
-    use_parallel=True,           # Enable parallel processing
-    use_threads=False,           # Use processes instead of threads
-    max_workers=None,            # Number of workers (None = auto)
-    return_all_points=True,      # Return all points with match status
-    match_status_column="bb_uid_matched",  # Column name for match status
-    
-    # Caching options
-    use_bb_uid_cache=True,       # Cache database queries
-    cache_dir="cache",           # Where to store cache files
-    cache_max_age_days=120,      # How long to keep cache files
-    
-    # Testing options
-    sample=False,                # Whether to sample the data
-)
-
-point_in_polygon(config)
-```
-
-## Input CSV Format
-
-Your input CSV file should have at least these columns (names can be configured):
-- `rec_id`: Unique identifier for each point
-- `latitude`: Latitude coordinate
-- `longitude`: Longitude coordinate
-
-Example:
-```csv
-rec_id,latitude,longitude
-1,45.4215,-75.6972
-2,45.4216,-75.6973
-```
-
-## Output Format
-
-The output CSV will contain:
-- All columns from your input CSV
-- A match status column (default name: "bb_uid_matched")
-  - `True`: Point falls within a polygon
-  - `False`: Point does not fall within any polygon
-
-## Performance Tips
-
-1. **Chunking**: Adjust `chunk_size` based on your available memory. Larger chunks process faster but use more memory.
-
-2. **Parallel Processing**: 
-   - Enable with `use_parallel=True`
-   - Use `use_threads=False` for CPU-bound tasks
-   - Set `max_workers` to control resource usage
-
-3. **Caching**:
-   - Enable with `use_bb_uid_cache=True`
-   - Cache files are stored in `cache_dir`
-   - Set `cache_max_age_days` to control cache freshness
-
-## Troubleshooting
-
-1. **Database Connection Issues**:
-   - Ensure credentials are set up using `setup_keyring()`
-   - Verify hostname and database name
-   - Check network connectivity
-
-2. **CSV Issues**:
-   - Verify column names match your configuration
-   - Ensure CSV has headers
-   - Check for valid latitude/longitude values
-
-3. **Performance Issues**:
-   - Try adjusting `chunk_size`
-   - Enable parallel processing
-   - Use caching for repeated queries
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+Active development
