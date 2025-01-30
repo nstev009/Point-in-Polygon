@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pathlib import Path
 
-import cx_Oracle #called by sqlalchemy- explicitly added here to trigger warnings if not around
+import cx_Oracle2 #called by sqlalchemy- explicitly added here to trigger warnings if not around
 import geopandas as gpd
 import keyring as kr
 import pandas as pd
@@ -111,7 +111,7 @@ def point_in_polygon(config: PointInPolygonConfig) -> None:
         return
 
     # Specify the connection string
-    connection_str = f"oracle+cx_oracle://{username}:{password}@{config.hostname}"
+    connection_str = f"oracle+cx_oracle2://{username}:{password}@{config.hostname}"
 
     # Query the database and get the GeoPandas DataFrame
     df_shapes, cached_used = get_df_shapes(
