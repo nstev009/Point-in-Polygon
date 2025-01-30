@@ -7,11 +7,15 @@ name = "point_in_polygon"
 version = "0.1.0"
 description = "Point in polygon to replace ArcGIS calling"
 readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.9, <4.0"
+license = { text = "MIT" }
+keywords = ["Point in Polygon", "GIS"]
 authors = [
     { name = "Jean Philippe Wan", email = "jeanphilippe.wan@statcan.gc.ca" }
 ]
-license = { text = "MIT" }
-keywords = ["Point in Polygon", "GIS"]
+maintainers = [
+    { name = "Jean Philippe Wan", email = "jeanphilippe.wan@statcan.gc.ca" }
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -22,22 +26,15 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-urls = {
-    "Homepage" = "https://github.com/username/point_in_polygon"
-    "Repository" = "https://github.com/username/point_in_polygon"
-    "Documentation" = "https://point_in_polygon.readthedocs.io"
-    "Bug Tracker" = "https://github.com/username/point_in_polygon/issues"
-}
-requires-python = ">=3.9, <4.0"
 dependencies = [
-    "cx-Oracle^8.3.0",  
-    "geopandas^0.14.4",  
-    "keyring^25.2.0",  
-    "pandas^2.2.2",  
-    "pydantic^2.6.1",  
-    "pyproj^3.6.1",  
-    "shapely^2.0.4",  
-    "SQLAlchemy^2.0.30",  
+    "cx-Oracle>=8.3.0",
+    "geopandas>=0.14.4",
+    "keyring>=25.2.0",
+    "pandas>=2.2.2",
+    "pydantic>=2.6.1",
+    "pyproj>=3.6.1",
+    "shapely>=2.0.4",
+    "SQLAlchemy>=2.0.30",
 ]
 
 [project.optional-dependencies]
@@ -47,12 +44,17 @@ dev = [
     "ruff>=0.0.284",
     "mypy>=1.5.0"
 ]
-# You can add more optional groups, such as "docs", "testing", etc.
+
+[project.urls]
+Homepage = "https://github.com/username/point_in_polygon"
+Repository = "https://github.com/username/point_in_polygon"
+Documentation = "https://point_in_polygon.readthedocs.io"
+"Bug Tracker" = "https://github.com/username/point_in_polygon/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra -q --cov=your_package --cov-report=term-missing"
+addopts = "-ra -q --cov=point_in_polygon --cov-report=term-missing"
 
 [tool.ruff]
 # Select categories of linting rules:
