@@ -27,7 +27,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "cx-Oracle>=8.3.1",
+    "cx-Oracle2>=8.3.1",
     "geopandas>=0.14.4",
     "keyring>=25.2.0",
     "pandas>=2.2.2",
