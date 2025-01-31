@@ -5,7 +5,7 @@ from multiprocessing import freeze_support
 
 def main():
     # Input and output file paths
-    input_file = r"\\fld6filer\Record_Linkage\Point_in_Polygon_Examples\input_test_data\bg_latlongs_100_recs_with_header.csv"
+    input_file = r"C:\Users\wjeanph\Desktop\bg_latlongs_12M_recs_with_header.csv"
     output_file = "output_results.csv"
 
 
@@ -21,7 +21,7 @@ def main():
         id_column="bg_sn",
         lat_column="bg_latitude",
         lon_column="bg_longitude",
-        chunk_size=50,  # Smaller chunk size for small dataset
+        chunk_size=1_500_000,  # Smaller chunk size for small dataset
         use_parallel=True,
         return_all_points=True,
         use_bb_uid_cache=True,  # Enable caching

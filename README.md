@@ -58,13 +58,9 @@ from point_in_polygon import PointInPolygonConfig, point_in_polygon
 # Create configuration
 config = PointInPolygonConfig(
     # Required parameters
-    csv_long_lat_file="input_points.csv",  # CSV with rec_id, latitude, longitude columns
+    csv_long_lat_file="input_points.csv",  # CSV with your points data
     output_csv_file="output_results.csv",   # Where to save the results
-    table_name="WC2021NGD_A_202106",       # Oracle table name
-    
-    # Optional: Override defaults if needed
-    hostname="Geodepot",                    # Default database hostname
-    database_name="WAREHOUSE",              # Default database name
+    table_name="YOUR_TABLE_NAME",           # Oracle table name
 )
 
 # Run the point-in-polygon operation
@@ -82,40 +78,38 @@ config = PointInPolygonConfig(
     # Required input/output files
     csv_long_lat_file="input_points.csv",
     output_csv_file="output_results.csv",
-    
-    # Required database table information
-    table_name="WC2021NGD_A_202106",
+    table_name="YOUR_TABLE_NAME",
     
     # Database connection settings (defaults shown)
-    hostname="Geodepot",
-    database_name="WAREHOUSE",
+    hostname="Geodepot",          # Default database hostname
+    database_name="WAREHOUSE",    # Default database name
     
     # Database column and spatial settings
-    uid="BB_UID",                  # UID column name for geodepot database
-    shape_column="SHAPE",          # Shape column name for geodepot database
-    spatial_reference=3347,        # Spatial reference system code for geodepot database
-    conditions="WHERE ...",        # Optional SQL conditions
+    uid="BB_UID",                # UID column name
+    shape_column="SHAPE",        # Shape column name
+    spatial_reference=3347,      # Spatial reference system code
+    conditions=None,             # Optional SQL WHERE conditions
     
     # CSV column mapping
-    id_column="rec_id",           # Name of the ID column in your CSV
-    lat_column="latitude",        # Name of the latitude column in your CSV
-    lon_column="longitude",       # Name of the longitude column in your CSV
+    id_column="rec_id",         # Name of the ID column in your CSV
+    lat_column="latitude",      # Name of the latitude column in your CSV
+    lon_column="longitude",     # Name of the longitude column in your CSV
     
     # Processing options
-    chunk_size=100000,           # Process this many rows at once
-    use_parallel=True,           # Enable parallel processing
-    use_threads=False,           # Use processes instead of threads
-    max_workers=None,            # Number of workers (None = auto)
-    return_all_points=True,      # Return all points with match status
+    chunk_size=100000,          # Process this many rows at once
+    use_parallel=True,          # Enable parallel processing
+    use_threads=False,          # Use processes instead of threads
+    max_workers=None,           # Number of workers (None = auto)
+    return_all_points=True,     # Include unmatched points in output
     match_status_column="bb_uid_matched",  # Column name for match status
     
     # Caching options
-    use_bb_uid_cache=True,       # Cache database queries
-    cache_dir="cache",           # Where to store cache files
-    cache_max_age_days=120,      # How long to keep cache files
+    use_bb_uid_cache=True,      # Cache database queries
+    cache_dir="cache",          # Where to store cache files
+    cache_max_age_days=120,     # How long to keep cache files
     
     # Testing options
-    sample=False,                # Whether to sample the data
+    sample=False               # Whether to sample the data
 )
 
 point_in_polygon(config)
@@ -151,11 +145,21 @@ The output CSV will contain:
    - Enable with `use_parallel=True`
    - Use `use_threads=False` for CPU-bound tasks
    - Set `max_workers` to control resource usage
+   - Each worker process automatically gets its own copy of the geometric data
+   - Database queries are parallelized with each worker having its own connection
+   - Memory usage scales with the number of workers as each gets a data copy
 
 3. **Caching**:
    - Enable with `use_bb_uid_cache=True`
    - Cache files are stored in `cache_dir`
    - Set `cache_max_age_days` to control cache freshness
+   - Caching geometric data reduces database load for repeated operations
+
+4. **Memory Management**:
+   - The package loads geometric data once and distributes copies to worker processes
+   - Memory usage = (size of geometric data) × (number of workers)
+   - Monitor memory usage and adjust `max_workers` if needed
+   - Use smaller `chunk_size` if processing very large datasets
 
 ## Troubleshooting
 

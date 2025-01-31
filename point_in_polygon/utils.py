@@ -2,9 +2,21 @@ import cx_Oracle
 from sqlalchemy import create_engine, text, pool
 from sqlalchemy.exc import SQLAlchemyError
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 import keyring as kr
-from .setup_keyring import setup_keyring
+import os
+import sys
+
+# Handle imports differently when running as main
+if __name__ == '__main__':
+    # Add the parent directory to sys.path for direct script execution
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from point_in_polygon.setup_keyring import setup_keyring
+else:
+    from .setup_keyring import setup_keyring
+
+import psutil
+import multiprocessing
 
 def check_oracle_client():
     """Check if Oracle Client is properly installed."""
@@ -114,10 +126,82 @@ def check_database_connection(
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
+
+def check_system_specs() -> Dict[str, Any]:
+    """
+    Check system specifications relevant for multiprocessing optimization.
+    
+    Returns:
+        Dict containing system specifications:
+        - cpu_count: Number of logical CPU cores
+        - cpu_count_physical: Number of physical CPU cores
+        - memory_total_gb: Total system memory in GB
+        - memory_available_gb: Available system memory in GB
+        - disk_usage: Dictionary with disk usage information
+        - cpu_percent: Current CPU utilization percentage
+        - memory_percent: Current memory utilization percentage
+    """
+    try:
+        # Get CPU information
+        cpu_count = multiprocessing.cpu_count()
+        cpu_count_physical = psutil.cpu_count(logical=False)
+        
+        # Get memory information
+        memory = psutil.virtual_memory()
+        memory_total_gb = memory.total / (1024 ** 3)  # Convert to GB
+        memory_available_gb = memory.available / (1024 ** 3)
+        
+        # Get disk information for the current working directory
+        disk_usage = psutil.disk_usage(os.getcwd())
+        disk_info = {
+            'total_gb': disk_usage.total / (1024 ** 3),
+            'used_gb': disk_usage.used / (1024 ** 3),
+            'free_gb': disk_usage.free / (1024 ** 3),
+            'percent_used': disk_usage.percent
+        }
+        
+        # Get current CPU and memory utilization
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory_percent = memory.percent
+        
+        specs = {
+            'cpu_count': cpu_count,
+            'cpu_count_physical': cpu_count_physical,
+            'memory_total_gb': round(memory_total_gb, 2),
+            'memory_available_gb': round(memory_available_gb, 2),
+            'disk_usage': {k: round(v, 2) if isinstance(v, float) else v 
+                          for k, v in disk_info.items()},
+            'cpu_percent': cpu_percent,
+            'memory_percent': memory_percent
+        }
+        
+        # Print formatted output
+        print("\n=== System Specifications ===")
+        print(f"CPU Cores (Logical/Physical): {cpu_count}/{cpu_count_physical}")
+        print(f"Memory Total: {specs['memory_total_gb']:.2f} GB")
+        print(f"Memory Available: {specs['memory_available_gb']:.2f} GB")
+        print(f"Current CPU Usage: {cpu_percent}%")
+        print(f"Current Memory Usage: {memory_percent}%")
+        print("\nDisk Information (Working Directory):")
+        print(f"Total: {disk_info['total_gb']:.2f} GB")
+        print(f"Used: {disk_info['used_gb']:.2f} GB ({disk_info['percent_used']}%)")
+        print(f"Free: {disk_info['free_gb']:.2f} GB")
+        print("===========================\n")
+        
+        return specs
+        
+    except Exception as e:
+        print(f"Error checking system specifications: {str(e)}")
+        return {}
+
+
 if __name__ == "__main__":
-    # Example usage
+    # Check system specifications
+    specs = check_system_specs()
+    
+    # Example usage of database connection
     success, message = check_database_connection()
     if success:
-        print(f"✅ {message}")
+        print("Database connection successful!")
     else:
-        print(f"❌ {message}")
+        print(f"Database connection failed: {message}")

@@ -7,6 +7,7 @@ Created on Tue Jul  4 15:25:51 2023
 import pickle
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import concurrent.futures
 from datetime import datetime
 from tqdm import tqdm
 from pathlib import Path
@@ -58,7 +59,7 @@ class PointInPolygonConfig(BaseModel):
     chunk_size: int = Field(default=100000, description="Size of chunks for processing")
     use_parallel: bool = Field(default=True, description="Whether to use parallel processing")
     use_threads: bool = Field(default=False, description="Whether to use threads instead of processes")
-    max_workers: Optional[int] = Field(default=None, description="Number of workers for parallel processing")
+    max_workers: Optional[int] = Field(default=None, description="Number of workers for parallel processing. If None, uses all available CPU cores")
     return_all_points: bool = Field(default=True, description="If True, return all points with match status. If False, return only matched points.")
     match_status_column: str = Field(default="bb_uid_matched", description="Name of the column indicating whether a point matched a polygon")
     
@@ -437,8 +438,11 @@ def process_file_in_chunks(
     
     if use_parallel:
         if max_workers is None:
-            # For small datasets (few chunks), use fewer workers to avoid overhead
-            max_workers = min(multiprocessing.cpu_count(), max(2, total_chunks), 8)
+            # Use all available CPU cores if max_workers is not specified
+            max_workers = multiprocessing.cpu_count()
+        else:
+            # Ensure max_workers doesn't exceed the number of available cores
+            max_workers = min(max_workers, multiprocessing.cpu_count())
         print(f"• Using {max_workers} parallel workers for {total_chunks} chunks")
     
     # Create progress bar for chunks
@@ -447,15 +451,23 @@ def process_file_in_chunks(
         first_chunk = True
         
         # Process the file in chunks
-        for chunk_num, chunk in enumerate(pd.read_csv(csv_long_lat_file, chunksize=chunk_size), 1):
-            if use_parallel:
-                # Split the chunk into sub-chunks
-                sub_chunks = split_dataframe(chunk, max_workers)
+        if use_parallel:
+            # Use ProcessPoolExecutor for true parallelism
+            executor_class = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
+            with executor_class(max_workers=max_workers) as executor:
+                # Create a queue of futures
+                futures = {}
+                completed_order = []
+                chunk_buffer = {}
+                next_chunk_to_write = 1
                 
-                # Process sub-chunks in parallel
-                executor_class = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
-                with executor_class(max_workers=max_workers) as executor:
-                    futures = []
+                # Submit initial batch of chunks
+                for chunk_num, chunk in enumerate(pd.read_csv(csv_long_lat_file, chunksize=chunk_size), 1):
+                    # Split chunk for parallel processing
+                    sub_chunks = split_dataframe(chunk, max_workers)
+                    chunk_results = []
+                    
+                    # Submit all sub-chunks
                     for sub_chunk in sub_chunks:
                         future = executor.submit(
                             process_chunk,
@@ -467,25 +479,53 @@ def process_file_in_chunks(
                             return_all_points,
                             match_status_column,
                         )
-                        futures.append(future)
+                        futures[future] = (chunk_num, len(chunk_results))
+                        chunk_results.append(None)
                     
-                    # Collect results
-                    results = []
-                    for future in futures:
-                        try:
-                            result = future.result()
-                            if result is not None:
-                                results.append(result)
-                        except Exception as e:
-                            print(f"\nError in chunk {chunk_num}: {str(e)}")
-                            continue
+                    # Store the placeholder for results
+                    chunk_buffer[chunk_num] = chunk_results
                     
-                    if results:
-                        result_chunk = pd.concat(results, ignore_index=True)
-                    else:
-                        print(f"\nWarning: No valid results from chunk {chunk_num}")
-                        continue
-            else:
+                    # Process completed futures as they finish
+                    while futures:
+                        # Wait for the next future to complete
+                        done, _ = concurrent.futures.wait(
+                            futures.keys(), 
+                            return_when=concurrent.futures.FIRST_COMPLETED
+                        )
+                        
+                        for future in done:
+                            chunk_num, sub_chunk_idx = futures[future]
+                            try:
+                                result = future.result()
+                                if result is not None:
+                                    chunk_buffer[chunk_num][sub_chunk_idx] = result
+                            except Exception as e:
+                                print(f"\nError in chunk {chunk_num}: {str(e)}")
+                            
+                            # Remove the completed future
+                            del futures[future]
+                            
+                            # Check if this chunk is complete
+                            if chunk_num == next_chunk_to_write and all(r is not None for r in chunk_buffer[chunk_num]):
+                                # All sub-chunks for this chunk are done, concatenate and write
+                                try:
+                                    results = [r for r in chunk_buffer[chunk_num] if r is not None]
+                                    if results:
+                                        result_chunk = pd.concat(results, ignore_index=True)
+                                        mode = "w" if first_chunk else "a"
+                                        header = first_chunk
+                                        result_chunk.to_csv(output_csv_file, mode=mode, header=header, index=False)
+                                        first_chunk = False
+                                except Exception as e:
+                                    print(f"\nError writing chunk {chunk_num}: {str(e)}")
+                                
+                                # Clean up the buffer and move to next chunk
+                                del chunk_buffer[chunk_num]
+                                next_chunk_to_write += 1
+                                pbar.update(1)
+        else:
+            # Non-parallel processing
+            for chunk_num, chunk in enumerate(pd.read_csv(csv_long_lat_file, chunksize=chunk_size), 1):
                 try:
                     result_chunk = process_chunk(
                         chunk,
@@ -496,21 +536,17 @@ def process_file_in_chunks(
                         return_all_points,
                         match_status_column,
                     )
+                    
+                    if result_chunk is not None:
+                        mode = "w" if first_chunk else "a"
+                        header = first_chunk
+                        result_chunk.to_csv(output_csv_file, mode=mode, header=header, index=False)
+                        first_chunk = False
                 except Exception as e:
                     print(f"\nError in chunk {chunk_num}: {str(e)}")
                     continue
-            
-            # Write the results to the output file
-            try:
-                mode = "w" if first_chunk else "a"
-                header = first_chunk
-                result_chunk.to_csv(output_csv_file, mode=mode, header=header, index=False)
-                first_chunk = False
-            except Exception as e:
-                print(f"\nError writing chunk {chunk_num}: {str(e)}")
-                continue
-            
-            pbar.update(1)
+                
+                pbar.update(1)
     
     print("\n=== Processing completed ===\n")
 
@@ -747,7 +783,7 @@ def main():
         lat_column="bg_latitude",  # Updated to match input file
         lon_column="bg_longitude",  # Updated to match input file
         return_all_points=True,
-        chunk_size=20,  # Process in smaller chunks for better progress visibility
+        chunk_size=100_000,  # Process in smaller chunks for better progress visibility
         use_parallel=True,  # Keep parallel processing on
         max_workers=4  # Limit workers for small dataset
     )
