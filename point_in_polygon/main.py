@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pathlib import Path
 
-import cx_Oracle2 #called by sqlalchemy- explicitly added here to trigger warnings if not around
+# import cx_Oracle2 #called by sqlalchemy- explicitly added here to trigger warnings if not around
 import geopandas as gpd
 import keyring as kr
 import pandas as pd
@@ -22,7 +22,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from typing import Optional, Tuple
 
-from setup_keyring import setup_keyring
+from .setup_keyring import setup_keyring
 
 
 ########################################################################################################################
@@ -67,29 +67,33 @@ class PointInPolygonConfig(BaseModel):
     sample: bool = Field(default=False, description="Whether to sample the data")
 
     @validator('csv_long_lat_file')
-    def validate_csv_headers(cls, v, values):
+    def validate_csv_exists(cls, v):
+        if not Path(v).exists():
+            raise ValueError(f"CSV file not found: {v}")
+        return v
+        
+    def validate_csv_headers(self) -> None:
+        """Validate that the CSV file has the required headers."""
         try:
             # Read just the header row
-            headers = pd.read_csv(v, nrows=0).columns.tolist()
-            required_columns = [
-                values.get('id_column', 'rec_id'),
-                values.get('lat_column', 'latitude'),
-                values.get('lon_column', 'longitude')
-            ]
+            headers = pd.read_csv(self.csv_long_lat_file, nrows=0).columns.tolist()
+            
+            required_columns = [self.id_column, self.lat_column, self.lon_column]
             
             missing_columns = [col for col in required_columns if col not in headers]
             if missing_columns:
                 raise ValueError(
                     f"CSV file is missing required headers: {', '.join(missing_columns)}. "
-                    f"Expected headers: {', '.join(required_columns)}"
+                    f"Your CSV should have these columns: {', '.join(required_columns)}"
                 )
-            return v
         except pd.errors.EmptyDataError:
             raise ValueError("CSV file is empty")
-        except FileNotFoundError:
-            raise ValueError(f"CSV file not found: {v}")
         except Exception as e:
             raise ValueError(f"Error reading CSV file: {str(e)}")
+            
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.validate_csv_headers()
 
 
 def point_in_polygon(config: PointInPolygonConfig) -> None:
@@ -111,7 +115,7 @@ def point_in_polygon(config: PointInPolygonConfig) -> None:
         return
 
     # Specify the connection string
-    connection_str = f"oracle+cx_oracle2://{username}:{password}@{config.hostname}"
+    connection_str = f"oracle+cx_oracle://{username}:{password}@{config.hostname}"
 
     # Query the database and get the GeoPandas DataFrame
     df_shapes, cached_used = get_df_shapes(
