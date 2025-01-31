@@ -6,15 +6,18 @@ Created on Tue Jul  4 15:25:51 2023
 """
 import pickle
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
-
+from tqdm import tqdm
 from pathlib import Path
+import multiprocessing
+from sqlalchemy import text
 
 # import cx_Oracle2 #called by sqlalchemy- explicitly added here to trigger warnings if not around
 import geopandas as gpd
 import keyring as kr
 import pandas as pd
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
 from pyproj import CRS
 from shapely.geometry import MultiPolygon, Point, Polygon
@@ -22,7 +25,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from typing import Optional, Tuple
 
-from setup_keyring import setup_keyring
+from point_in_polygon.setup_keyring import setup_keyring
 
 
 ########################################################################################################################
@@ -96,6 +99,35 @@ class PointInPolygonConfig(BaseModel):
         self.validate_csv_headers()
 
 
+def get_service_name(hostname: str) -> str:
+    """Get the service name for keyring storage."""
+    return f"point_in_polygon_{hostname.lower()}"
+
+def get_credentials(hostname: str) -> Tuple[str, str]:
+    """Get database credentials from keyring."""
+    service_name = get_service_name(hostname)
+    
+    # Try to get username from keyring first
+    username = kr.get_password(service_name, "username")
+    if not username:
+        print("No username found in keyring. Running setup_keyring...")
+        setup_keyring()
+        username = kr.get_password(service_name, "username")
+        if not username:
+            raise ValueError("Failed to get username from keyring. Please run setup_keyring.py manually.")
+    
+    # Get password for the username
+    password = kr.get_password(service_name, "password")
+    if not password:
+        print("No password found in keyring. Running setup_keyring...")
+        setup_keyring()
+        password = kr.get_password(service_name, "password")
+        if not password:
+            raise ValueError("Failed to get password from keyring. Please run setup_keyring.py manually.")
+    
+    return username, password
+
+
 def point_in_polygon(config: PointInPolygonConfig) -> None:
     """
     Process points to determine if they fall within polygons using the provided configuration.
@@ -105,53 +137,51 @@ def point_in_polygon(config: PointInPolygonConfig) -> None:
     """
     target_crs = CRS.from_epsg(config.spatial_reference)
 
-    # Get credentials - use default username if not provided
-    username = "wjeanph"  # default username
-    password = kr.get_password(config.hostname, username)
-    if not password:
-        print("No credentials found in keyring. Running setup_keyring...")
-        setup_keyring()
-        # Try to get the password again after setup
-        password = kr.get_password(config.hostname, username)
-        if not password:
-            print("Failed to set up credentials. Please run setup_keyring.py manually.")
-            return
+    try:
+        # Get credentials from keyring
+        username, password = get_credentials(config.hostname)
+        
+        # Specify the connection string
+        connection_str = f"oracle+cx_oracle://{username}:{password}@{config.hostname}"
 
-    # Specify the connection string
-    connection_str = f"oracle+cx_oracle://{username}:{password}@{config.hostname}"
+        # Query the database and get the GeoPandas DataFrame
+        df_shapes, cached_used = get_df_shapes(
+            config.use_bb_uid_cache,
+            config.cache_dir,
+            connection_str,
+            config.database_name,
+            config.table_name,
+            config.uid,
+            config.shape_column,
+            config.spatial_reference,
+            config.conditions,
+            config.sample,
+            config.cache_max_age_days,
+        )
 
-    # Query the database and get the GeoPandas DataFrame
-    df_shapes, cached_used = get_df_shapes(
-        config.use_bb_uid_cache,
-        config.cache_dir,
-        connection_str,
-        config.database_name,
-        config.table_name,
-        config.uid,
-        config.shape_column,
-        config.spatial_reference,
-        config.conditions,
-        config.sample,
-        config.cache_max_age_days,
-    )
+        print(f"Size of geopandas object returned: {get_object_size_in_gb(df_shapes)}")
 
-    print(f"Size of geopandas object returned: {get_object_size_in_gb(df_shapes)}")
-
-    process_file_in_chunks(
-        config.csv_long_lat_file,
-        config.chunk_size,
-        target_crs,
-        df_shapes,
-        config.output_csv_file,
-        config.use_parallel,
-        config.use_threads,
-        config.max_workers,
-        config.id_column,
-        config.lat_column,
-        config.lon_column,
-        config.return_all_points,
-        config.match_status_column,
-    )
+        process_file_in_chunks(
+            config.csv_long_lat_file,
+            config.chunk_size,
+            target_crs,
+            df_shapes,
+            config.output_csv_file,
+            config.use_parallel,
+            config.use_threads,
+            config.max_workers,
+            config.id_column,
+            config.lat_column,
+            config.lon_column,
+            config.return_all_points,
+            config.match_status_column,
+        )
+    except ValueError as e:
+        print(f"Error: {str(e)}")
+        return
+    except Exception as e:
+        print(f"Error during execution: {str(e)}")
+        return
 
 
 class Timer:
@@ -180,40 +210,28 @@ def time_it(func):
     return wrapper
 
 
-def process_polygon_string(polygon_string):
-    """Converts a polygon string to a Shapely MultiPolygon object.
+def process_chunk(chunk, target_crs, df_shapes, lon_column="longitude", lat_column="latitude", return_all_points=False, match_status_column="bb_uid_matched"):
+    try:
+        # Process the chunk without detailed logging
+        geometry = [Point(xy) for xy in zip(chunk[lon_column], chunk[lat_column])]
+        crs = CRS.from_epsg(4326)
+        df_points = gpd.GeoDataFrame(chunk, geometry=geometry, crs=crs)
 
-    Args:
-        polygon_string (str): The polygon string to process.
+        # Convert coordinates silently
+        df_points.to_crs(target_crs, inplace=True)
 
-    Returns:
-        Polygon or MultiPolygon: The processed Polygon or MultiPolygon object.
-    """
-    # Remove the outer "POLYGON ((" and "))" parts from the
-    # print(type(polygon_string))
-    # print(polygon_string)
-    polygon_string = polygon_string.replace("POLYGON ((", "").replace("))", "")
+        if return_all_points:
+            merged_gdf = gpd.sjoin(df_points, df_shapes, how="left", predicate="within")
+            index_right_col = 'index_right' if df_shapes.index.name is None else df_shapes.index.name
+            merged_gdf[match_status_column] = ~merged_gdf[index_right_col].isna()
+            merged_gdf = merged_gdf.drop(columns=[index_right_col])
+        else:
+            merged_gdf = gpd.sjoin(df_points, df_shapes, how="inner", predicate="within")
 
-    # Split the string into individual sub-polygon strings
-    sub_polygon_strings = polygon_string.split("),(")
-
-    # Convert each sub-polygon string to a Shapely Polygon object
-    polygons = []
-    for sub_polygon_string in sub_polygon_strings:
-        # Split the sub-polygon string by commas and spaces to get individual coordinates
-        coordinates = [
-            tuple(map(float, coord.split())) for coord in sub_polygon_string.split(", ")
-        ]
-        # Create the Shapely Polygon object and add it to the list
-        polygons.append(Polygon(coordinates))
-
-    # Create a MultiPolygon object if there are multiple polygons, else use the single polygon
-    if len(polygons) > 1:
-        multipolygon = MultiPolygon(polygons)
-    else:
-        multipolygon = polygons[0]
-
-    return multipolygon
+        return merged_gdf
+    except Exception as e:
+        print(f"\nError processing points: {str(e)}")
+        raise
 
 
 def query_database_and_get_dataframe(
@@ -225,72 +243,256 @@ def query_database_and_get_dataframe(
     spatial_reference,
     conditions=None,
     sample=False,
+    num_chunks=16,      # Number of chunks to split the data into
+    max_workers=4       # Number of parallel workers
 ):
-    """Queries the database and retrieves a GeoPandas DataFrame.
-
-    Args:
-        connection_str (str): The Oracle database connection string.
-        database_name (str): The name of the database.
-        table_name (str): The name of the table.
-        uid (str): The UID column name.
-        shape_column (str): The shape column name.
-        spatial_reference (str): The spatial reference system of the data.
-        conditions (str, optional): Additional query conditions. Defaults to None.
-        sample (bool, optional): Flag indicating whether to sample the data. Defaults to False.
-
-    Returns:
-        gpd.GeoDataFrame: The resulting GeoPandas DataFrame.
-    """
+    """Queries the database in parallel chunks based on ID ranges and retrieves a GeoPandas DataFrame."""
+    print("\n=== Querying Database ===")
+    
     # Create a SQLAlchemy engine with connection pooling
     engine = create_engine(connection_str, poolclass=QueuePool)
 
-    # Construct the SQL query with schema
-    query = f"SELECT {uid}, SDE.ST_asText({shape_column}) as geometry FROM {database_name}.{table_name}"
+    # Base query template with ID range parameters
+    query_template = f"""
+    SELECT {uid} as uid_col, SDE.ST_asText({shape_column}) as geometry 
+    FROM {database_name}.{table_name}
+    WHERE {uid} >= {{start_id}} AND {uid} < {{end_id}}
+    """
 
-    where_conditions = []
+    # Add additional conditions if provided
     if conditions:
-        where_conditions.append(conditions)
+        query_template += f" AND ({conditions})"
     if sample:
-        where_conditions.append("ROWNUM <= 100")
+        query_template += " AND ROWNUM <= 100"
 
-    if where_conditions:
-        query += " WHERE " + " AND ".join(where_conditions)
+    print("• Getting table information...")
+    chunk_boundaries, total_rows = get_chunk_boundaries(
+        engine, database_name, table_name, uid, num_chunks, conditions
+    )
+    
+    if not chunk_boundaries:
+        print("Warning: No data found in specified range")
+        return gpd.GeoDataFrame()
+
+    print(f"• Found {total_rows:,} rows")
+    print(f"• Using {max_workers} parallel workers to fetch {len(chunk_boundaries)} chunks")
+    
+    # Prepare arguments for parallel processing
+    chunk_args = [
+        (connection_str, query_template, start_id, end_id, i+1)
+        for i, (start_id, end_id) in enumerate(chunk_boundaries)
+    ]
 
     timer = Timer()
+    timer.start()
+    
+    # Create progress bar for database fetching
+    with tqdm(total=len(chunk_boundaries), desc="• Fetching data", unit="chunk", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} chunks [{elapsed}<{remaining}]') as pbar:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(fetch_chunk_by_id_range, args) for args in chunk_args]
+            
+            dfs = []
+            for future in as_completed(futures):
+                chunk_df = future.result()
+                if chunk_df is not None and not chunk_df.empty:
+                    chunk_df.columns = chunk_df.columns.str.lower()
+                    dfs.append(chunk_df)
+                pbar.update(1)
+    
+    if not dfs:
+        print("\nWarning: No data was fetched successfully")
+        return gpd.GeoDataFrame()
 
+    print("\n• Combining results...")
+    df = pd.concat(dfs, ignore_index=True)
+    rows_fetched = len(df)
+    print(f"• Successfully fetched {rows_fetched:,} rows ({rows_fetched/total_rows:.1%} of total)")
+
+    print("• Converting geometries...")
+    geometry = df['geometry'].apply(process_polygon_string)
+    
+    # Create GeoDataFrame with the normalized column name
+    gdf = gpd.GeoDataFrame(df[['uid_col']], geometry=geometry, crs=f"EPSG:{spatial_reference}")
+    gdf = gdf.rename(columns={'uid_col': uid})
+    
+    timer.end()
+    print(f"\n=== Database query completed in {timer.end():.1f} minutes ===\n")
+
+    return gdf
+
+
+def fetch_chunk_by_id_range(args):
+    """Fetch a chunk of data from the database using ID range."""
+    connection_str, query_template, start_id, end_id, chunk_num = args
+    engine = create_engine(connection_str)
+    
     try:
-        # Read the SQL query result into a DataFrame
-        print(f"Querying database: {query}")
-        timer.start()
-        df = pd.read_sql(query, engine)
-        timer.end()
-
-        if df.empty:
-            print("Warning: Query returned no results")
-            return gpd.GeoDataFrame()
-
-        # Print column names for debugging
-        print("Available columns:", df.columns.tolist())
-
-        print("Converting shape to shapely geometry")
-        timer.start()
-        # Convert column names to lowercase for case-insensitive matching
-        df.columns = df.columns.str.lower()
-        df["geometry"] = df["geometry"].apply(process_polygon_string)
-        timer.end()
-
-        gpdf = gpd.GeoDataFrame(df, geometry="geometry")
-        gpdf.geometry.set_crs(crs=CRS.from_epsg(spatial_reference), inplace=True)
-
-        return gpdf
-        
+        with engine.connect() as connection:
+            chunk_df = pd.read_sql(text(query_template.format(start_id=start_id, end_id=end_id)), connection)
+            return chunk_df
     except Exception as e:
-        print(f"Error executing query: {str(e)}")
-        raise
+        print(f"\nError in chunk {chunk_num}: {str(e)}")
+        return None
 
 
-# Function to handle cache checking and querying the database
-@time_it
+def get_total_rows(engine, database_name, table_name, conditions=None):
+    """Get total number of rows in the table."""
+    query = f"SELECT COUNT(*) as count FROM {database_name}.{table_name}"
+    if conditions:
+        query += f" WHERE {conditions}"
+    
+    with engine.connect() as connection:
+        result = connection.execute(text(query)).fetchone()
+        return result[0]
+
+
+def get_chunk_boundaries(engine, database_name, table_name, uid, num_chunks, conditions=None):
+    """Get the boundaries for each chunk based on the UID values."""
+    # Get min and max UID values
+    query = f"""
+    SELECT MIN({uid}) as min_id, MAX({uid}) as max_id, COUNT(*) as total_rows 
+    FROM {database_name}.{table_name}
+    """
+    if conditions:
+        query += f" WHERE {conditions}"
+    
+    with engine.connect() as connection:
+        result = connection.execute(text(query)).fetchone()
+        min_id, max_id, total_rows = result
+        
+    if not min_id or not max_id:
+        return [], 0
+        
+    # Calculate chunk boundaries
+    id_range = max_id - min_id
+    chunk_size = id_range // num_chunks
+    
+    boundaries = []
+    for i in range(num_chunks):
+        start_id = min_id + (i * chunk_size)
+        end_id = min_id + ((i + 1) * chunk_size) if i < num_chunks - 1 else max_id + 1
+        boundaries.append((start_id, end_id))
+        
+    return boundaries, total_rows
+
+
+def split_dataframe(df, n_chunks):
+    """Split a DataFrame into n roughly equal chunks without using numpy's deprecated swapaxes."""
+    chunk_size = len(df) // n_chunks
+    remainder = len(df) % n_chunks
+    chunks = []
+    start = 0
+    
+    for i in range(n_chunks):
+        # Add one extra row for chunks that should handle the remainder
+        extra = 1 if i < remainder else 0
+        end = start + chunk_size + extra
+        chunks.append(df.iloc[start:end].copy())
+        start = end
+    
+    return chunks
+
+
+def process_file_in_chunks(
+    csv_long_lat_file: str,
+    chunk_size: int,
+    target_crs: CRS,
+    df_shapes: gpd.GeoDataFrame,
+    output_csv_file: str,
+    use_parallel: bool = False,
+    use_threads: bool = False,
+    max_workers: Optional[int] = None,
+    id_column: str = "rec_id",
+    lat_column: str = "latitude",
+    lon_column: str = "longitude",
+    return_all_points: bool = False,
+    match_status_column: str = "bb_uid_matched",
+):
+    """Process a CSV file in chunks, performing spatial joins with the shapes DataFrame."""
+    print("\n=== Processing Points ===")
+    
+    # Get total number of chunks for progress bar
+    total_chunks = sum(1 for _ in pd.read_csv(csv_long_lat_file, chunksize=chunk_size))
+    
+    if use_parallel:
+        if max_workers is None:
+            max_workers = min(multiprocessing.cpu_count(), 8)
+        print(f"• Using {max_workers} parallel workers for {total_chunks} chunks")
+    
+    # Create progress bar for chunks
+    with tqdm(total=total_chunks, desc="• Processing", unit="chunk", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} chunks [{elapsed}<{remaining}]') as pbar:
+        # Initialize the output file with headers
+        first_chunk = True
+        
+        # Process the file in chunks
+        for chunk_num, chunk in enumerate(pd.read_csv(csv_long_lat_file, chunksize=chunk_size), 1):
+            if use_parallel:
+                # Split the chunk into sub-chunks
+                sub_chunks = split_dataframe(chunk, max_workers)
+                
+                # Process sub-chunks in parallel
+                executor_class = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
+                with executor_class(max_workers=max_workers) as executor:
+                    futures = []
+                    for sub_chunk in sub_chunks:
+                        future = executor.submit(
+                            process_chunk,
+                            sub_chunk,
+                            target_crs,
+                            df_shapes,
+                            lon_column,
+                            lat_column,
+                            return_all_points,
+                            match_status_column,
+                        )
+                        futures.append(future)
+                    
+                    # Collect results
+                    results = []
+                    for future in futures:
+                        try:
+                            result = future.result()
+                            if result is not None:
+                                results.append(result)
+                        except Exception as e:
+                            print(f"\nError in chunk {chunk_num}: {str(e)}")
+                            continue
+                    
+                    if results:
+                        result_chunk = pd.concat(results, ignore_index=True)
+                    else:
+                        print(f"\nWarning: No valid results from chunk {chunk_num}")
+                        continue
+            else:
+                try:
+                    result_chunk = process_chunk(
+                        chunk,
+                        target_crs,
+                        df_shapes,
+                        lon_column,
+                        lat_column,
+                        return_all_points,
+                        match_status_column,
+                    )
+                except Exception as e:
+                    print(f"\nError in chunk {chunk_num}: {str(e)}")
+                    continue
+            
+            # Write the results to the output file
+            try:
+                mode = "w" if first_chunk else "a"
+                header = first_chunk
+                result_chunk.to_csv(output_csv_file, mode=mode, header=header, index=False)
+                first_chunk = False
+            except Exception as e:
+                print(f"\nError writing chunk {chunk_num}: {str(e)}")
+                continue
+            
+            pbar.update(1)
+    
+    print("\n=== Processing completed ===\n")
+
+
 def get_df_shapes(
     use_bb_uid_cache: bool,
     cache_dir: str,
@@ -472,108 +674,44 @@ def get_object_size_in_gb(obj):
     return size_gb
 
 
-def process_chunk(chunk, target_crs, df_shapes, lon_column="longitude", lat_column="latitude", return_all_points=False, match_status_column="bb_uid_matched"):
-    geometry = [Point(xy) for xy in zip(chunk[lon_column], chunk[lat_column])]
-    crs = CRS.from_epsg(4326)
-    df_points = gpd.GeoDataFrame(chunk, geometry=geometry, crs=crs)
+def process_polygon_string(polygon_string):
+    """Converts a polygon string to a Shapely MultiPolygon object.
 
-    print("Processing Chunk: Converting from epsg 4326 to epsg 3347")
-    df_points.to_crs(target_crs, inplace=True)
-
-    if return_all_points:
-        # Perform left join to keep all points
-        merged_gdf = gpd.sjoin(df_points, df_shapes, how="left", predicate="within")
-        # Get the name of the index column from the right DataFrame after the join
-        # This will be either 'index_right' or the actual index name if it exists
-        index_right_col = 'index_right' if df_shapes.index.name is None else df_shapes.index.name
-        # Add a match status column (True if point matched a polygon, False if not)
-        merged_gdf[match_status_column] = ~merged_gdf[index_right_col].isna()
-        # Drop the index_right column as it's not needed
-        merged_gdf = merged_gdf.drop(columns=[index_right_col])
-    else:
-        # Original behavior: only return matched points
-        merged_gdf = gpd.sjoin(df_points, df_shapes, how="inner", predicate="within")
-        if df_shapes.index.name is not None:
-            merged_gdf = merged_gdf.drop(columns=[df_shapes.index.name])
-        else:
-            merged_gdf = merged_gdf.drop(columns=['index_right'])
-
-    return merged_gdf
-
-
-@time_it
-def process_file_in_chunks(
-    csv_long_lat_file: str,
-    chunk_size: int,
-    target_crs: CRS,
-    df_shapes: gpd.GeoDataFrame,
-    output_csv_file: str,
-    use_parallel: bool = False,
-    use_threads: bool = False,
-    max_workers: Optional[int] = None,
-    id_column: str = "rec_id",
-    lat_column: str = "latitude",
-    lon_column: str = "longitude",
-    return_all_points: bool = False,
-    match_status_column: str = "bb_uid_matched",
-) -> None:
-    """
-    Process a CSV file in chunks, performing spatial joins with the shapes DataFrame.
-    
     Args:
-        csv_long_lat_file: Path to input CSV file (must have headers)
-        chunk_size: Number of rows to process at once
-        target_crs: Target coordinate reference system
-        df_shapes: GeoDataFrame containing polygon shapes
-        output_csv_file: Path to output CSV file
-        use_parallel: Whether to use parallel processing
-        use_threads: Whether to use threads instead of processes
-        max_workers: Number of worker threads/processes
-        id_column: Name of the ID column in CSV
-        lat_column: Name of the latitude column in CSV
-        lon_column: Name of the longitude column in CSV
-        return_all_points: If True, return all points with match status. If False, return only matched points.
-        match_status_column: Name of the column indicating whether a point matched a polygon
+        polygon_string (str): The polygon string to process.
+
+    Returns:
+        Polygon or MultiPolygon: The processed Polygon or MultiPolygon object.
     """
-    executor_class = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
-    results = []
+    # Remove the outer "POLYGON ((" and "))" parts from the
+    # print(type(polygon_string))
+    # print(polygon_string)
+    polygon_string = polygon_string.replace("POLYGON ((", "").replace("))", "")
 
-    # Verify required columns are present
-    headers = pd.read_csv(csv_long_lat_file, nrows=0).columns.tolist()
-    required_columns = [id_column, lat_column, lon_column]
-    missing_columns = [col for col in required_columns if col not in headers]
-    if missing_columns:
-        raise ValueError(
-            f"CSV file is missing required headers: {', '.join(missing_columns)}. "
-            f"Expected headers: {', '.join(required_columns)}"
-        )
+    # Split the string into individual sub-polygon strings
+    sub_polygon_strings = polygon_string.split("),(")
 
-    with pd.read_csv(
-        csv_long_lat_file,
-        chunksize=chunk_size,
-        usecols=required_columns,  # Only read the columns we need
-    ) as reader:
-        with executor_class(max_workers=max_workers) as executor:
-            futures = []
-            for chunk in reader:
-                if use_parallel:
-                    futures.append(
-                        executor.submit(process_chunk, chunk, target_crs, df_shapes, lon_column, lat_column, return_all_points, match_status_column)
-                    )
-                else:
-                    results.append(process_chunk(chunk, target_crs, df_shapes, lon_column, lat_column, return_all_points, match_status_column))
+    # Convert each sub-polygon string to a Shapely Polygon object
+    polygons = []
+    for sub_polygon_string in sub_polygon_strings:
+        # Split the sub-polygon string by commas and spaces to get individual coordinates
+        coordinates = [
+            tuple(map(float, coord.split())) for coord in sub_polygon_string.split(", ")
+        ]
+        # Create the Shapely Polygon object and add it to the list
+        polygons.append(Polygon(coordinates))
 
-            if use_parallel:
-                for future in futures:
-                    results.append(future.result())
+    # Create a MultiPolygon object if there are multiple polygons, else use the single polygon
+    if len(polygons) > 1:
+        multipolygon = MultiPolygon(polygons)
+    else:
+        multipolygon = polygons[0]
 
-    merged_gdf = pd.concat(results, ignore_index=True)
-    merged_gdf.to_csv(output_csv_file, index=False)
-    print(merged_gdf.head())
+    return multipolygon
 
 
 def main():
-    # Example configuration with default values
+    # Example configuration with optimized values for small datasets
     config = PointInPolygonConfig(
         csv_long_lat_file=r"\\fld6filer\Record_Linkage\Point_in_Polygon_Examples\input_test_data\bg_latlongs_100_recs_with_header.csv",
         output_csv_file="output_results.csv",  # Output in current directory
@@ -586,7 +724,10 @@ def main():
         id_column="bg_sn",  # Updated to match input file
         lat_column="bg_latitude",  # Updated to match input file
         lon_column="bg_longitude",  # Updated to match input file
-        return_all_points=True
+        return_all_points=True,
+        chunk_size=20,  # Process in smaller chunks for better progress visibility
+        use_parallel=True,  # Keep parallel processing on
+        max_workers=4  # Limit workers for small dataset
     )
     
     point_in_polygon(config)

@@ -35,6 +35,7 @@ dependencies = [
     "pyproj>=3.6.1",
     "shapely>=2.0.4",
     "SQLAlchemy>=2.0.30",
+    "tqdm>=4.66.2",
 ]
 
 [project.optional-dependencies]

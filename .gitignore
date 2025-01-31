@@ -44,3 +44,6 @@ htmlcov/
 *.csv
 *.pkl
 *.pickle
+
+cache/
+cache2/

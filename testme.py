@@ -1,4 +1,5 @@
-from point_in_polygon import setup_keyring, PointInPolygonConfig, point_in_polygon
+from point_in_polygon.main import PointInPolygonConfig, point_in_polygon
+from point_in_polygon.setup_keyring import setup_keyring
 import os
 import keyring as kr
 import sys
