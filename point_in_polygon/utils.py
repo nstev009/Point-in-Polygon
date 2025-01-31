@@ -3,6 +3,63 @@ from sqlalchemy import create_engine, text, pool
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 from typing import Tuple, Optional
+import keyring as kr
+from .setup_keyring import setup_keyring
+
+def check_oracle_client():
+    """Check if Oracle Client is properly installed."""
+    try:
+        import cx_Oracle
+        cx_Oracle.init_oracle_client()
+        return True
+    except Exception as e:
+        print("\nError: Oracle Client library not found or not properly configured.")
+        print("\nTo fix this, please follow these steps:")
+        print("1. Download the Oracle Instant Client from:")
+        print("   https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html")
+        print("2. Download the 'Basic Package' (e.g., instantclient-basic-windows.x64-21.12.0.0.0dbru.zip)")
+        print("3. Extract the ZIP file to a permanent location (e.g., C:\\oracle\\instantclient_21_12)")
+        print("4. Add the instant client directory to your PATH environment variable")
+        print("   Or set ORACLE_HOME environment variable to the instant client directory")
+        print("\nError details:", str(e))
+        return False
+
+
+def list_tables(hostname, database_name):
+    """List available tables in the database."""
+    try:
+        # Get credentials
+        cred = kr.get_credential(hostname, "")
+        if not cred:
+            print(f"No credentials found for {hostname}. Setting up now...")
+            setup_keyring(hostname)
+            cred = kr.get_credential(hostname, "")
+            if not cred:
+                print("Failed to get credentials")
+                return
+
+        # Create connection string
+        connection_str = f"oracle+cx_oracle://{cred.username}:{cred.password}@{hostname}"
+        engine = create_engine(connection_str)
+
+        # Query to list tables
+        query = f"""
+        SELECT table_name 
+        FROM all_tables 
+        WHERE owner = '{database_name}'
+        AND table_name LIKE '%NGD%'
+        ORDER BY table_name
+        """
+
+        print(f"\nListing tables in {database_name} schema containing 'NGD':")
+        with engine.connect() as connection:
+            result = connection.execute(text(query))
+            for row in result:
+                print(f"- {row[0]}")
+
+    except Exception as e:
+        print(f"Error listing tables: {str(e)}")
+
 
 def check_database_connection(
     hostname: str = "Geodepot",
@@ -29,11 +86,10 @@ def check_database_connection(
     try:
         # If credentials not provided, try to get from keyring
         if not (username and password):
-            import keyring
             # First try to get the username from environment or use default
             if not username:
                 username = "wjeanph"  # default username if not specified
-            password = keyring.get_password(keyring_service, username)
+            password = kr.get_password(keyring_service, username)
             if not password:
                 return False, "No credentials found in keyring. Please set up credentials first."
 

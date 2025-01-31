@@ -24,6 +24,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from typing import Optional, Tuple
+import os
 
 from point_in_polygon.setup_keyring import setup_keyring
 
@@ -69,6 +70,29 @@ class PointInPolygonConfig(BaseModel):
     # Data sampling (for testing)
     sample: bool = Field(default=False, description="Whether to sample the data")
 
+    def __init__(self, *args, **kwargs):
+        # Perform system checks automatically
+        from .utils import check_oracle_client, list_tables
+        
+        if not check_oracle_client():
+            raise RuntimeError("Oracle client check failed")
+        
+        # Create cache directory if it doesn't exist
+        os.makedirs(kwargs.get('cache_dir', 'cache'), exist_ok=True)
+        
+        # Check if credentials exist in keyring
+        hostname = kwargs.get('hostname', 'Geodepot')
+        cred = kr.get_credential(hostname, "")
+        if not cred:
+            print(f"No credentials found for {hostname}. Setting up now...")
+            setup_keyring(hostname)
+            cred = kr.get_credential(hostname, "")
+            if not cred:
+                raise RuntimeError("Failed to set up credentials. Please try again.")
+        
+        super().__init__(*args, **kwargs)
+        self.validate_csv_headers()
+        
     @field_validator('csv_long_lat_file')
     def validate_csv_exists(cls, v):
         if not Path(v).exists():
@@ -94,11 +118,8 @@ class PointInPolygonConfig(BaseModel):
         except Exception as e:
             raise ValueError(f"Error reading CSV file: {str(e)}")
             
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.validate_csv_headers()
-
-
+########################################################################################################################
+########################################################################################################################
 def get_service_name(hostname: str) -> str:
     """Get the service name for keyring storage."""
     return f"point_in_polygon_{hostname.lower()}"
@@ -195,7 +216,7 @@ class Timer:
         end_time = time.time()
         time_lapse = end_time - self.start_time
         time_lapse_minutes = time_lapse / 60.0
-        print(f"Time lapse: {time_lapse_minutes:.2f} minutes")
+        return time_lapse_minutes
 
 
 def time_it(func):
@@ -244,7 +265,7 @@ def query_database_and_get_dataframe(
     conditions=None,
     sample=False,
     num_chunks=16,      # Number of chunks to split the data into
-    max_workers=4       # Number of parallel workers
+    max_workers=8       # Number of parallel workers
 ):
     """Queries the database in parallel chunks based on ID ranges and retrieves a GeoPandas DataFrame."""
     print("\n=== Querying Database ===")
@@ -315,8 +336,8 @@ def query_database_and_get_dataframe(
     gdf = gpd.GeoDataFrame(df[['uid_col']], geometry=geometry, crs=f"EPSG:{spatial_reference}")
     gdf = gdf.rename(columns={'uid_col': uid})
     
-    timer.end()
-    print(f"\n=== Database query completed in {timer.end():.1f} minutes ===\n")
+    elapsed_time = timer.end()
+    print(f"\n=== Database query completed in {elapsed_time:.1f} minutes ===\n")
 
     return gdf
 
@@ -416,7 +437,8 @@ def process_file_in_chunks(
     
     if use_parallel:
         if max_workers is None:
-            max_workers = min(multiprocessing.cpu_count(), 8)
+            # For small datasets (few chunks), use fewer workers to avoid overhead
+            max_workers = min(multiprocessing.cpu_count(), max(2, total_chunks), 8)
         print(f"• Using {max_workers} parallel workers for {total_chunks} chunks")
     
     # Create progress bar for chunks
@@ -733,4 +755,6 @@ def main():
     point_in_polygon(config)
 
 if __name__ == "__main__":
+    from multiprocessing import freeze_support
+    freeze_support()
     main()
