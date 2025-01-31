@@ -15,14 +15,14 @@ from pathlib import Path
 import geopandas as gpd
 import keyring as kr
 import pandas as pd
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from pyproj import CRS
 from shapely.geometry import MultiPolygon, Point, Polygon
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from typing import Optional, Tuple
 
-from .setup_keyring import setup_keyring
+from setup_keyring import setup_keyring
 
 
 ########################################################################################################################
@@ -66,7 +66,7 @@ class PointInPolygonConfig(BaseModel):
     # Data sampling (for testing)
     sample: bool = Field(default=False, description="Whether to sample the data")
 
-    @validator('csv_long_lat_file')
+    @field_validator('csv_long_lat_file')
     def validate_csv_exists(cls, v):
         if not Path(v).exists():
             raise ValueError(f"CSV file not found: {v}")
@@ -105,14 +105,17 @@ def point_in_polygon(config: PointInPolygonConfig) -> None:
     """
     target_crs = CRS.from_epsg(config.spatial_reference)
 
-    # Get credentials
-    cred = kr.get_credential(config.hostname, "")
-    if cred:
-        username = cred.username
-        password = cred.password
-    else:
+    # Get credentials - use default username if not provided
+    username = "wjeanph"  # default username
+    password = kr.get_password(config.hostname, username)
+    if not password:
+        print("No credentials found in keyring. Running setup_keyring...")
         setup_keyring()
-        return
+        # Try to get the password again after setup
+        password = kr.get_password(config.hostname, username)
+        if not password:
+            print("Failed to set up credentials. Please run setup_keyring.py manually.")
+            return
 
     # Specify the connection string
     connection_str = f"oracle+cx_oracle://{username}:{password}@{config.hostname}"
@@ -241,38 +244,49 @@ def query_database_and_get_dataframe(
     # Create a SQLAlchemy engine with connection pooling
     engine = create_engine(connection_str, poolclass=QueuePool)
 
-    # Construct the SQL query
-    query = f"SELECT {uid}, SDE.ST_asText({shape_column}) as GEOMETRY FROM {database_name}.{table_name}"
+    # Construct the SQL query with schema
+    query = f"SELECT {uid}, SDE.ST_asText({shape_column}) as geometry FROM {database_name}.{table_name}"
 
-    if conditions or sample:
-        query += " WHERE "
-
+    where_conditions = []
     if conditions:
-        query += conditions
+        where_conditions.append(conditions)
+    if sample:
+        where_conditions.append("ROWNUM <= 100")
 
-    if sample and conditions:
-        query += " AND ROWNUM <= 100"
-    elif sample and not conditions:
-        query += "ROWNUM <= 100"
+    if where_conditions:
+        query += " WHERE " + " AND ".join(where_conditions)
 
     timer = Timer()
 
-    # Read the SQL query result into a DataFrame
-    print("Querying database")
-    timer.start()
-    df = pd.read_sql(query, engine)
-    timer.end()
+    try:
+        # Read the SQL query result into a DataFrame
+        print(f"Querying database: {query}")
+        timer.start()
+        df = pd.read_sql(query, engine)
+        timer.end()
 
-    print("Converting shape to shapely geometry")
-    timer.start()
-    df["geometry"] = df["geometry"].apply(process_polygon_string)
-    timer.end()
+        if df.empty:
+            print("Warning: Query returned no results")
+            return gpd.GeoDataFrame()
 
-    gpdf = gpd.GeoDataFrame(df, geometry="geometry")
+        # Print column names for debugging
+        print("Available columns:", df.columns.tolist())
 
-    gpdf.geometry.set_crs(crs=CRS.from_epsg(spatial_reference), inplace=True)
+        print("Converting shape to shapely geometry")
+        timer.start()
+        # Convert column names to lowercase for case-insensitive matching
+        df.columns = df.columns.str.lower()
+        df["geometry"] = df["geometry"].apply(process_polygon_string)
+        timer.end()
 
-    return gpdf
+        gpdf = gpd.GeoDataFrame(df, geometry="geometry")
+        gpdf.geometry.set_crs(crs=CRS.from_epsg(spatial_reference), inplace=True)
+
+        return gpdf
+        
+    except Exception as e:
+        print(f"Error executing query: {str(e)}")
+        raise
 
 
 # Function to handle cache checking and querying the database
@@ -458,8 +472,8 @@ def get_object_size_in_gb(obj):
     return size_gb
 
 
-def process_chunk(chunk, target_crs, df_shapes, return_all_points=False, match_status_column="bb_uid_matched"):
-    geometry = [Point(xy) for xy in zip(chunk.longitude, chunk.latitude)]
+def process_chunk(chunk, target_crs, df_shapes, lon_column="longitude", lat_column="latitude", return_all_points=False, match_status_column="bb_uid_matched"):
+    geometry = [Point(xy) for xy in zip(chunk[lon_column], chunk[lat_column])]
     crs = CRS.from_epsg(4326)
     df_points = gpd.GeoDataFrame(chunk, geometry=geometry, crs=crs)
 
@@ -469,14 +483,21 @@ def process_chunk(chunk, target_crs, df_shapes, return_all_points=False, match_s
     if return_all_points:
         # Perform left join to keep all points
         merged_gdf = gpd.sjoin(df_points, df_shapes, how="left", predicate="within")
+        # Get the name of the index column from the right DataFrame after the join
+        # This will be either 'index_right' or the actual index name if it exists
+        index_right_col = 'index_right' if df_shapes.index.name is None else df_shapes.index.name
         # Add a match status column (True if point matched a polygon, False if not)
-        merged_gdf[match_status_column] = ~merged_gdf[df_shapes.index.name].isna()
+        merged_gdf[match_status_column] = ~merged_gdf[index_right_col].isna()
         # Drop the index_right column as it's not needed
-        merged_gdf = merged_gdf.drop(columns=[df_shapes.index.name])
+        merged_gdf = merged_gdf.drop(columns=[index_right_col])
     else:
         # Original behavior: only return matched points
         merged_gdf = gpd.sjoin(df_points, df_shapes, how="inner", predicate="within")
-    
+        if df_shapes.index.name is not None:
+            merged_gdf = merged_gdf.drop(columns=[df_shapes.index.name])
+        else:
+            merged_gdf = merged_gdf.drop(columns=['index_right'])
+
     return merged_gdf
 
 
@@ -537,10 +558,10 @@ def process_file_in_chunks(
             for chunk in reader:
                 if use_parallel:
                     futures.append(
-                        executor.submit(process_chunk, chunk, target_crs, df_shapes, return_all_points, match_status_column)
+                        executor.submit(process_chunk, chunk, target_crs, df_shapes, lon_column, lat_column, return_all_points, match_status_column)
                     )
                 else:
-                    results.append(process_chunk(chunk, target_crs, df_shapes, return_all_points, match_status_column))
+                    results.append(process_chunk(chunk, target_crs, df_shapes, lon_column, lat_column, return_all_points, match_status_column))
 
             if use_parallel:
                 for future in futures:
@@ -554,13 +575,21 @@ def process_file_in_chunks(
 def main():
     # Example configuration with default values
     config = PointInPolygonConfig(
-        csv_long_lat_file="C:/Users/wjeanph/Documents/python/point_in_poly/coordinates/poc_20230301_latlong_48b.csv",
-        output_csv_file="C:/Users/wjeanph/Documents/python/point_in_poly/coordinates/test_joined_poc_20230301_latlong_48b.csv",
-        table_name="WC2021NGD_A_202106",  # Now required to be specified
-        return_all_points=True,
+        csv_long_lat_file=r"\\fld6filer\Record_Linkage\Point_in_Polygon_Examples\input_test_data\bg_latlongs_100_recs_with_header.csv",
+        output_csv_file="output_results.csv",  # Output in current directory
+        table_name="WC2021NGD_A_202106",
+        hostname="Geodepot",
+        database_name="WAREHOUSE",
+        uid="BB_UID",
+        shape_column="SHAPE",
+        spatial_reference=3347,
+        id_column="bg_sn",  # Updated to match input file
+        lat_column="bg_latitude",  # Updated to match input file
+        lon_column="bg_longitude",  # Updated to match input file
+        return_all_points=True
     )
+    
     point_in_polygon(config)
-
 
 if __name__ == "__main__":
     main()

@@ -6,18 +6,18 @@ import getpass
 import keyring as kr
 
 
-def setup_keyring(hostname: str = "Geodepot") -> bool:
+def setup_keyring(hostname: str = "geodepot") -> bool:
     """
     Set up keyring with database credentials.
     
     Args:
-        hostname: The hostname of the database (default: "Geodepot")
+        hostname: The hostname of the database (default: "geodepot")
         
     Returns:
         bool: True if credentials were stored successfully, False otherwise
         
     Example:
-        >>> from point_in_polygon import setup_keyring
+        >>> from point_in_polygon.setup_keyring import setup_keyring
         >>> setup_keyring()  # Will prompt for username and password
         >>> # Or specify a different hostname
         >>> setup_keyring(hostname="CustomHost")
@@ -49,9 +49,14 @@ def setup_keyring(hostname: str = "Geodepot") -> bool:
         return True
 
     except Exception as e:
-        print(f"Error setting up credentials: {str(e)}")
+        print(f"Error: {str(e)}")
         return False
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the script."""
     setup_keyring()
+
+
+if __name__ == "__main__":
+    main()
