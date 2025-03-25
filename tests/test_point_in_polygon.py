@@ -9,6 +9,11 @@ from pydantic import ValidationError
 
 from point_in_polygon import PointInPolygonConfig, point_in_polygon
 
+import os
+# Set Oracle environment variables at the start of your script
+os.environ['ORACLE_HOME'] = r"C:\ora19c\product\19.0.0\client_2"
+os.environ['PATH'] = os.environ.get('PATH', '') + r";C:\ora19c\product\19.0.0\client_2\bin"
+os.environ['TNS_ADMIN'] = r"C:\or"
 
 @pytest.fixture
 def sample_csv(tmp_path):

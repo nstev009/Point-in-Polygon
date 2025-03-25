@@ -15,18 +15,6 @@ def get_service_name(hostname: str) -> str:
 def setup_keyring(hostname: str = "Geodepot") -> bool:
     """
     Set up keyring with database credentials.
-    
-    Args:
-        hostname: The hostname of the database (default: "Geodepot")
-        
-    Returns:
-        bool: True if credentials were stored successfully, False otherwise
-        
-    Example:
-        >>> from point_in_polygon.setup_keyring import setup_keyring
-        >>> setup_keyring()  # Will prompt for username and password
-        >>> # Or specify a different hostname
-        >>> setup_keyring(hostname="CustomHost")
     """
     try:
         service_name = get_service_name(hostname)
@@ -46,25 +34,34 @@ def setup_keyring(hostname: str = "Geodepot") -> bool:
 
         print("Storing credentials...")
         
-        # Store both username and password in the keyring using service name
-        print("Storing username...")
+        # Method 1: Store as separate username/password entries (for get_password)
+        print("Storing username and password separately...")
         kr.set_password(service_name, "username", username)
-        print("Storing password...")
         kr.set_password(service_name, "password", password)
 
+        # Method 2: Store in the format expected by get_credential()
+        print("Storing credentials for direct retrieval...")
+        kr.set_password(service_name, username, password)
+
         print("Verifying stored credentials...")
-        # Verify the credentials were stored correctly
+        # Verify the credentials were stored correctly (both methods)
         retrieved_username = kr.get_password(service_name, "username")
-        print(f"Retrieved username: {retrieved_username}")
         retrieved_password = kr.get_password(service_name, "password")
-        print(f"Password retrieved: {'Yes' if retrieved_password else 'No'}")
         
-        if retrieved_username != username:
-            print("Error: Username verification failed")
+        # Also verify the get_credential method will work
+        credential = kr.get_credential(service_name, None)
+        
+        print(f"Retrieved username: {retrieved_username}")
+        print(f"Password retrieved: {'Yes' if retrieved_password else 'No'}")
+        print(f"Credential retrieval: {'Success' if credential and credential.username == username else 'Failed'}")
+        
+        if retrieved_username != username or retrieved_password != password:
+            print("Error: Username/password verification failed")
             return False
-        if retrieved_password != password:
-            print("Error: Password verification failed")
-            return False
+        
+        if not credential or credential.username != username or credential.password != password:
+            print("Warning: Credential object verification failed")
+            # Don't return False here, as some backends might not support get_credential
 
         print(f"Success: Credentials stored securely for {username}@{hostname}")
         return True

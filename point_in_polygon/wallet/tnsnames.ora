@@ -1,0 +1,8 @@
+geodepot = 
+(DESCRIPTION = 
+    (ADDRESS = (PROTOCOL = TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT = 2485))
+    (CONNECT_DATA = 
+        (SERVER = DEDICATED)
+        (SERVICE_NAME = geodepot_s.scocip1client.scocivcn.oraclevcn.com)
+    )
+)

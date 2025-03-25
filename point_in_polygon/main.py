@@ -29,6 +29,12 @@ import os
 
 from point_in_polygon.setup_keyring import setup_keyring
 
+import os
+# Set Oracle environment variables at the start of your script
+os.environ['ORACLE_HOME'] = r"C:\ora19c\product\19.0.0\client_2"
+os.environ['PATH'] = os.environ.get('PATH', '') + r";C:\ora19c\product\19.0.0\client_2\bin"
+os.environ['TNS_ADMIN'] = r"\\stpfsmora01sa.file.core.windows.net\tnsnames\ora19"
+
 
 ########################################################################################################################
 ########################################################################################################################
@@ -41,7 +47,7 @@ class PointInPolygonConfig(BaseModel):
     table_name: str = Field(..., description="Table name")
     
     # Database connection settings (with defaults)
-    hostname: str = Field(default="Geodepot", description="Database hostname")
+    hostname: str = Field(default="geodepot", description="Database hostname")
     database_name: str = Field(default="WAREHOUSE", description="Database name")
     
     # Database column and spatial settings
@@ -73,7 +79,7 @@ class PointInPolygonConfig(BaseModel):
 
     def __init__(self, *args, **kwargs):
         # Perform system checks automatically
-        from .utils import check_oracle_client, list_tables
+        from point_in_polygon.utils import check_oracle_client, list_tables
         
         if not check_oracle_client():
             raise RuntimeError("Oracle client check failed")
@@ -83,7 +89,8 @@ class PointInPolygonConfig(BaseModel):
         
         # Check if credentials exist in keyring
         hostname = kwargs.get('hostname', 'Geodepot')
-        cred = kr.get_credential(hostname, "")
+        service_name = get_service_name(hostname)  # Use get_service_name for consistency
+        cred = kr.get_credential(service_name, "")
         if not cred:
             print(f"No credentials found for {hostname}. Setting up now...")
             setup_keyring(hostname)
@@ -771,7 +778,7 @@ def process_polygon_string(polygon_string):
 def main():
     # Example configuration with optimized values for small datasets
     config = PointInPolygonConfig(
-        csv_long_lat_file=r"\\fld6filer\Record_Linkage\Point_in_Polygon_Examples\input_test_data\bg_latlongs_100_recs_with_header.csv",
+        csv_long_lat_file=r"\\fld6filer\Record_Linkage\Point_in_Polygon_Examples\TEST_AREA_FOR_EVERYONE\data_input\my_latlongs_100_recs_sans_blanks_sans_oos.csv",
         output_csv_file="output_results.csv",  # Output in current directory
         table_name="WC2021NGD_A_202106",
         hostname="Geodepot",
@@ -779,9 +786,9 @@ def main():
         uid="BB_UID",
         shape_column="SHAPE",
         spatial_reference=3347,
-        id_column="bg_sn",  # Updated to match input file
-        lat_column="bg_latitude",  # Updated to match input file
-        lon_column="bg_longitude",  # Updated to match input file
+        id_column="my_uid",  # Updated to match input file
+        lat_column="my_latitude",  # Updated to match input file
+        lon_column="my_longitude",  # Updated to match input file
         return_all_points=True,
         chunk_size=100_000,  # Process in smaller chunks for better progress visibility
         use_parallel=True,  # Keep parallel processing on
@@ -790,7 +797,72 @@ def main():
     
     point_in_polygon(config)
 
+
+def check_oracle_config():
+    """Check Oracle configuration and print diagnostic information."""
+    import os
+    import sys
+    
+    print("\n=== Oracle Configuration ===")
+    print(f"ORACLE_HOME: {os.environ.get('ORACLE_HOME')}")
+    print(f"TNS_ADMIN: {os.environ.get('TNS_ADMIN')}")
+    
+    # Check if Oracle bin directory is in PATH
+    oracle_home = os.environ.get('ORACLE_HOME')
+    oracle_bin = os.path.join(oracle_home, 'bin') if oracle_home else None
+    path_env = os.environ.get('PATH', '')
+    
+    print(f"Oracle home in PATH: {oracle_home in path_env}")
+    print(f"Oracle bin in PATH: {oracle_bin in path_env if oracle_bin else False}")
+    
+    # Check if TNS_ADMIN directory exists and contains tnsnames.ora
+    tns_admin = os.environ.get('TNS_ADMIN')
+    if tns_admin and os.path.isdir(tns_admin):
+        print(f"TNS_ADMIN directory exists: {tns_admin}")
+        tnsnames_path = os.path.join(tns_admin, 'tnsnames.ora')
+        if os.path.isfile(tnsnames_path):
+            print(f"tnsnames.ora found: {tnsnames_path}")
+            # Print the geodepot entry from tnsnames.ora
+            try:
+                with open(tnsnames_path, 'r') as f:
+                    content = f.read()
+                    if 'geodepot' in content.lower():
+                        print("Geodepot entry found in tnsnames.ora")
+                    else:
+                        print("WARNING: No geodepot entry found in tnsnames.ora")
+            except Exception as e:
+                print(f"Error reading tnsnames.ora: {e}")
+        else:
+            print(f"ERROR: tnsnames.ora not found at {tnsnames_path}")
+    else:
+        print(f"ERROR: TNS_ADMIN directory does not exist: {tns_admin}")
+    
+    # Check if required Oracle DLLs exist
+    if oracle_home and os.path.isdir(oracle_home):
+        print(f"ORACLE_HOME directory exists: {oracle_home}")
+        
+        # Check in both oracle_home and oracle_home/bin
+        oci_dll_paths = [
+            os.path.join(oracle_home, 'oci.dll'),
+            os.path.join(oracle_home, 'bin', 'oci.dll')
+        ]
+        
+        found_dll = False
+        for path in oci_dll_paths:
+            if os.path.isfile(path):
+                print(f"oci.dll found: {path}")
+                found_dll = True
+                
+        if not found_dll:
+            print(f"ERROR: oci.dll not found in {oracle_home} or {os.path.join(oracle_home, 'bin')}")
+    else:
+        print(f"ERROR: ORACLE_HOME directory does not exist: {oracle_home}")
+    
+    print("=== End of Oracle Configuration ===\n")
+
 if __name__ == "__main__":
+    check_oracle_config()
+    
     from multiprocessing import freeze_support
     freeze_support()
     main()

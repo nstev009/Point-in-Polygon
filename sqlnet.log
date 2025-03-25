@@ -1,0 +1,171 @@
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 17-MAR-2025 10:51:27
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 17-MAR-2025 10:52:43
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12557, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+  Version 19.3.0.0.0
+  Time: 17-MAR-2025 10:52:54
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12557
+    TNS-12557: TNS:protocol adapter not loadable
+    ns secondary err code: 12560
+    nt main err code: 527
+    TNS-00527: Protocol Adapter not loadable
+    nt secondary err code: 0
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12557, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+  Version 19.3.0.0.0
+  Time: 17-MAR-2025 10:59:24
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12557
+    TNS-12557: TNS:protocol adapter not loadable
+    ns secondary err code: 12560
+    nt main err code: 527
+    TNS-00527: Protocol Adapter not loadable
+    nt secondary err code: 0
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 17-MAR-2025 15:10:06
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 17-MAR-2025 15:13:52
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 18-MAR-2025 08:38:33
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 18-MAR-2025 08:51:07
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(host=exa-db-prod1-3sduj-scan.scocip1client.scocivcn.oraclevcn.com)(PORT=2485))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=geodepot_s.scocip1client.scocivcn.oraclevcn.com)(CID=(PROGRAM=C:\Users\stevnoa\AppData\Local\Programs\Python\Python312\python.exe)(HOST=avd-ts1-138)(USER=stevnoa))))
+
+  VERSION INFORMATION:
+	TNS for 64-bit Windows: Version 19.0.0.0.0 - Production
+	wss  Version 19.3.0.0.0
+  Time: 19-MAR-2025 11:15:15
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 60
+    nt OS err code: 0
